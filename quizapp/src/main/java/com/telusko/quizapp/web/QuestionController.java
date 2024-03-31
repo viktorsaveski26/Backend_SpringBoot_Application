@@ -15,7 +15,7 @@ import java.util.List;
 public class QuestionController {
     @Autowired
     QuestionService questionService;
-    @GetMapping("allQuestions")
+    @PostMapping("allQuestions")
     public ResponseEntity<List<Question>> getAllQuestions(){ // ovde pravime vaka za pokraj Data, da pratime i status na baranjeto(200 Ok,404 i sl)
         return  questionService.getAllQuestions();
     }
