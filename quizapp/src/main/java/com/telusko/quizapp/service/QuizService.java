@@ -1,15 +1,15 @@
 package com.telusko.quizapp.service;
 
+import com.telusko.quizapp.model.*;
 import com.telusko.quizapp.model.Enum.QuizDifficultyLevel;
-import com.telusko.quizapp.model.Question;
-import com.telusko.quizapp.model.QuestionWrapper;
-import com.telusko.quizapp.model.Quiz;
-import com.telusko.quizapp.model.Response;
 import com.telusko.quizapp.repository.QuestionDao;
 import com.telusko.quizapp.repository.QuizDao;
+import com.telusko.quizapp.repository.QuizResultRepository;
+import com.telusko.quizapp.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -22,6 +22,10 @@ public class QuizService {
     QuizDao quizDao;
     @Autowired
     QuestionDao questionDao;
+    @Autowired
+    private UserRepository userRepository;
+    @Autowired
+    private QuizResultRepository quizResultRepository;
 
     public ResponseEntity<Quiz> createQuiz(String category, int numQ, String title, QuizDifficultyLevel quizDifficultyLevel) {
         List<Question> questions = questionDao.findRandomQuestionsByCategory(category, numQ);
@@ -49,20 +53,34 @@ public class QuizService {
         return new ResponseEntity<>(questionsForUser, HttpStatus.OK);
     }
 
-    public ResponseEntity<Integer> calculateResult(Integer id, List<Response> responses) {
-        Quiz quiz = quizDao.findById(id).get(); // get if you do not want to make this optional or throw an exception
+    public QuizResult calculateResult(Integer id, List<Response> responses) {
+        Quiz quiz = quizDao.findById(id).orElseThrow(() -> new RuntimeException("Quiz not found"));
         List<Question> questions = quiz.getQuestions();
-        int right = 0;
-        int i = 0;
-        for (Response response :  responses){
-            if(response.getResponse().equals(questions.get(i).getRightAnswer())){
-                right++;
-            }
-            i++;
-        }
-        return new ResponseEntity<>(right,HttpStatus.OK);
-    }
+        int correctAnswers = 0;
 
+        for (int i = 0; i < responses.size(); i++) {
+            if (responses.get(i).getResponse().equals(questions.get(i).getRightAnswer())) {
+                correctAnswers++;
+            }
+        }
+        // Retrieve the logged-in user's email
+        String loggedInUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+
+        // Fetch the User entity from the database
+        User user = userRepository.findByEmail(loggedInUserEmail)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        // Create and populate the QuizResult object
+        QuizResult quizResult = new QuizResult();
+        quizResult.setQuiz(quiz);
+        quizResult.setCorrectAnswers(correctAnswers);
+        quizResult.setTotalQuestions(questions.size());
+        quizResult.setUser(user); // Set the logged-in user
+
+        quizResultRepository.save(quizResult);
+
+        return quizResult;
+    }
     public ResponseEntity<List<Quiz>> getAllQuizzes() {
         return new ResponseEntity<>(quizDao.findAll(), HttpStatus.OK);
     }

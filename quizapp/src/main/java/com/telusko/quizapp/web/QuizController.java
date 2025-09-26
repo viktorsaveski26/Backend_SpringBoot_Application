@@ -2,6 +2,7 @@ package com.telusko.quizapp.web;
 
 import com.telusko.quizapp.model.DTO.QuizRequest;
 import com.telusko.quizapp.model.Quiz;
+import com.telusko.quizapp.model.QuizResult;
 import com.telusko.quizapp.model.Response;
 import com.telusko.quizapp.service.QuizService;
 import org.springframework.http.ResponseEntity;
@@ -52,6 +53,8 @@ public class QuizController {
     // Submit quiz responses and calculate the number of correct answers
     @PostMapping("/submit/{id}")
     public ResponseEntity<Integer> submitQuiz(@PathVariable Integer id, @RequestBody List<Response> responses) {
-        return quizService.calculateResult(id, responses);
+        QuizResult quizResult = quizService.calculateResult(id, responses);
+        int correctAnswers = quizResult.getCorrectAnswers(); // Extract the correct answers count
+        return ResponseEntity.ok(correctAnswers); // Return the count as a ResponseEntity
     }
 }
