@@ -24,7 +24,7 @@ public class AIController {
             return ResponseEntity.badRequest().body("Question cannot be empty.");
         }
 
-        String response = aiService.sendMessageToAI(question);
+        String response = aiService.generateSQL(question);
         return ResponseEntity.ok(response);
     }
 }
