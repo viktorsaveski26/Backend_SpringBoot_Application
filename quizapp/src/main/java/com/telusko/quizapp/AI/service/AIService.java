@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
 public class AIService {
 
     private static final String API_URL = "https://openrouter.ai/api/v1/chat/completions";
-    private static final String API_KEY = "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";
+    private static final String API_KEY = "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";
 
     // Enhanced SQL context with better instructions
     private static final String SQL_CONTEXT = """
@@ -46,13 +46,21 @@ public class AIService {
     - Use proper JOINs when querying multiple tables
     - Return ONLY the SQL query - no explanations, no code blocks, no formatting
     - Use proper column names and table names as specified above
-    - For user searches, match against name, surname, or email fields
-    - Always use ILIKE for case-insensitive text matching in PostgreSQL
+    - For exact name matching: Use LOWER(name) = LOWER('searchterm') for case-insensitive exact matching
+    - For exact surname matching: Use LOWER(surname) = LOWER('searchterm') for case-insensitive exact matching
+    - Never use LIKE or ILIKE with % wildcards unless explicitly asked for partial matching
+    
+    IMPORTANT MATCHING RULES:
+    - When searching for a specific name like "Jovan", use: WHERE LOWER(name) = LOWER('Jovan')
+    - When searching for a specific surname like "Smith", use: WHERE LOWER(surname) = LOWER('Smith')
+    - Only use LIKE '%term%' when explicitly asked for partial matching or "contains"
     
     EXAMPLES:
-    - "Show all quiz results for John" -> SELECT qr.*, u.name, u.surname, q.title FROM quiz_result qr JOIN users u ON qr.user_id = u.id JOIN quiz q ON qr.quiz_id = q.id WHERE u.name ILIKE '%John%'
+    - "Give me all users named Jovan" -> SELECT * FROM users WHERE LOWER(name) = LOWER('Jovan')
+    - "Show all quiz results for John" -> SELECT qr.*, u.name, u.surname, q.title FROM quiz_result qr JOIN users u ON qr.user_id = u.id JOIN quiz q ON qr.quiz_id = q.id WHERE LOWER(u.name) = LOWER('John')
+    - "Users with surname containing Smith" -> SELECT * FROM users WHERE LOWER(surname) LIKE LOWER('%Smith%')
     - "All users" -> SELECT * FROM users
-    - "Quiz results with user names" -> SELECT qr.*, u.name, u.surname, q.title FROM quiz_result qr JOIN users u ON qr.user_id = u.id JOIN quiz q ON qr.quiz_id = q.id
+    - "Find user by email john@example.com" -> SELECT * FROM users WHERE LOWER(email) = LOWER('john@example.com')
     """;
 
     public String generateSQL(String userQuestion) {
@@ -74,7 +82,7 @@ public class AIService {
         cleaned = cleaned.replaceAll("```", "");
 
         // Remove common prefixes
-        cleaned = cleaned.replaceAll("(?i)^(SQL:|Query:|Here's the SQL:|The SQL query is:)\\s*", "");
+        cleaned = cleaned.replaceAll("(?i)^(SQL:|Query:|Here's the SQL:|The SQL query is:|Answer:)\\s*", "");
 
         // Extract SQL from the response using regex
         Pattern sqlPattern = Pattern.compile("(SELECT\\s+.*?)(?:\\s*;\\s*)?$", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
@@ -86,6 +94,18 @@ public class AIService {
 
         // Remove trailing semicolon and whitespace
         cleaned = cleaned.replaceAll(";\\s*$", "").trim();
+
+        // Remove any extra quotes that might wrap the entire query
+        if (cleaned.startsWith("\"") && cleaned.endsWith("\"")) {
+            cleaned = cleaned.substring(1, cleaned.length() - 1);
+        }
+        if (cleaned.startsWith("'") && cleaned.endsWith("'")) {
+            cleaned = cleaned.substring(1, cleaned.length() - 1);
+        }
+
+        // Log the cleaned SQL for debugging
+        System.out.println("Original AI response: " + aiResponse);
+        System.out.println("Cleaned SQL: " + cleaned);
 
         // Validate it starts with SELECT (case insensitive)
         if (!cleaned.toLowerCase().startsWith("select")) {
