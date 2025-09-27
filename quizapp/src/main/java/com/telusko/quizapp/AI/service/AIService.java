@@ -5,47 +5,95 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class AIService {
 
     private static final String API_URL = "https://openrouter.ai/api/v1/chat/completions";
-    private static final String API_KEY = "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"; // <-- replace
+    private static final String API_KEY = "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";
 
-    // Static schema + rules
+    // Enhanced SQL context with better instructions
     private static final String SQL_CONTEXT = """
-    You are an expert SQL generator.
-    The database is PostgreSQL.
-
-    Allowed tables and columns:
-    1. users:
-       - id
-       - email
-       - name
-       - surname
-       - password
-       - role
-    2. quiz_result:
-       - id
-       - correct_answers
-       - total_questions
-       - quiz_id
-       - user_id
-    3. quiz:
-       - id
-       - title
-       - quiz_difficulty_level
-
-    Rules:
-    - ONLY generate safe SELECT queries.
-    - Never use INSERT, UPDATE, DELETE, DROP, ALTER, or any DDL/DML.
-    - Use INNER JOIN when necessary.
-    - Always output ONLY the SQL query with no explanation or formatting.
+    You are an expert SQL generator for a quiz application database.
+    Database: PostgreSQL
+    
+    SCHEMA:
+    1. users table:
+       - id (integer, primary key)
+       - email (varchar)
+       - name (varchar) 
+       - surname (varchar)
+       - password (varchar)
+       - role (varchar)
+    
+    2. quiz table:
+       - id (integer, primary key)
+       - title (varchar)
+       - quiz_difficulty_level (varchar)
+    
+    3. quiz_result table:
+       - id (integer, primary key)
+       - correct_answers (integer)
+       - total_questions (integer)
+       - quiz_id (integer, foreign key to quiz.id)
+       - user_id (integer, foreign key to users.id)
+    
+    STRICT RULES:
+    - Generate ONLY SELECT queries
+    - Never use INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, or any modification commands
+    - Use proper JOINs when querying multiple tables
+    - Return ONLY the SQL query - no explanations, no code blocks, no formatting
+    - Use proper column names and table names as specified above
+    - For user searches, match against name, surname, or email fields
+    - Always use ILIKE for case-insensitive text matching in PostgreSQL
+    
+    EXAMPLES:
+    - "Show all quiz results for John" -> SELECT qr.*, u.name, u.surname, q.title FROM quiz_result qr JOIN users u ON qr.user_id = u.id JOIN quiz q ON qr.quiz_id = q.id WHERE u.name ILIKE '%John%'
+    - "All users" -> SELECT * FROM users
+    - "Quiz results with user names" -> SELECT qr.*, u.name, u.surname, q.title FROM quiz_result qr JOIN users u ON qr.user_id = u.id JOIN quiz q ON qr.quiz_id = q.id
     """;
 
     public String generateSQL(String userQuestion) {
-        String finalPrompt = SQL_CONTEXT + "\n\nUser question: " + userQuestion + "\nSQL:";
-        return sendMessageToAI(finalPrompt);
+        String finalPrompt = SQL_CONTEXT + "\n\nUser question: " + userQuestion + "\n\nGenerate SQL query:";
+        String aiResponse = sendMessageToAI(finalPrompt);
+        return cleanSQLResponse(aiResponse);
+    }
+
+    private String cleanSQLResponse(String aiResponse) {
+        if (aiResponse == null || aiResponse.trim().isEmpty()) {
+            return "SELECT 1 WHERE FALSE"; // Safe fallback that returns no results
+        }
+
+        // Remove common AI response formatting
+        String cleaned = aiResponse.trim();
+
+        // Remove code block markers
+        cleaned = cleaned.replaceAll("```sql", "");
+        cleaned = cleaned.replaceAll("```", "");
+
+        // Remove common prefixes
+        cleaned = cleaned.replaceAll("(?i)^(SQL:|Query:|Here's the SQL:|The SQL query is:)\\s*", "");
+
+        // Extract SQL from the response using regex
+        Pattern sqlPattern = Pattern.compile("(SELECT\\s+.*?)(?:\\s*;\\s*)?$", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+        Matcher matcher = sqlPattern.matcher(cleaned);
+
+        if (matcher.find()) {
+            cleaned = matcher.group(1).trim();
+        }
+
+        // Remove trailing semicolon and whitespace
+        cleaned = cleaned.replaceAll(";\\s*$", "").trim();
+
+        // Validate it starts with SELECT (case insensitive)
+        if (!cleaned.toLowerCase().startsWith("select")) {
+            System.err.println("AI returned non-SELECT query: " + cleaned);
+            return "SELECT 1 WHERE FALSE"; // Safe fallback
+        }
+
+        return cleaned;
     }
 
     public String sendMessageToAI(String message) {
@@ -62,6 +110,8 @@ public class AIService {
         body.put("messages", List.of(
                 Map.of("role", "user", "content", message)
         ));
+        body.put("temperature", 0.1); // Lower temperature for more consistent SQL generation
+        body.put("max_tokens", 500);
 
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
 
@@ -87,10 +137,10 @@ public class AIService {
                     }
                 }
             }
-            return "Invalid or empty AI response.";
+            return "Error: Invalid AI response format";
         } catch (Exception e) {
             e.printStackTrace();
-            return "Error while calling AI: " + e.getMessage();
+            return "Error: " + e.getMessage();
         }
     }
 }
