@@ -29,15 +29,23 @@ public class AIController {
             return ResponseEntity.badRequest().body("Question cannot be empty.");
         }
 
-        // Generate SQL query
-        String sqlQuery = aiService.generateSQL(question);
+        // Generate SQL query or general response
+        String aiResponse = aiService.generateSQL(question);
 
-        try {
-            // Execute the query and return results
-            List<Map<String, Object>> results = queryExecutionService.executeQuery(sqlQuery);
-            return ResponseEntity.ok(results);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error executing query: " + e.getMessage());
+        // Check if the response is a valid SQL query
+        if (aiResponse.toLowerCase().startsWith("select")) {
+            try {
+                // Execute the query and return results
+                List<Map<String, Object>> results = queryExecutionService.executeQuery(aiResponse);
+                return ResponseEntity.ok(results);
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.badRequest().body("Invalid query: " + e.getMessage());
+            } catch (Exception e) {
+                return ResponseEntity.badRequest().body("Error executing query: " + e.getMessage());
+            }
         }
+
+        // If not a SQL query, return the general response
+        return ResponseEntity.ok(Map.of("response", aiResponse));
     }
 }

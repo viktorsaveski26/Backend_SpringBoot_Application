@@ -18,6 +18,8 @@ public class QuizResult {
     @JoinColumn(name = "quiz_id", nullable = false)
     private Quiz quiz;
 
+
+
     private Integer correctAnswers;
     private Integer totalQuestions;
 }

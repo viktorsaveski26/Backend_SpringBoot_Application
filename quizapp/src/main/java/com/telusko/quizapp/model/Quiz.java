@@ -27,4 +27,7 @@ public class Quiz {
             inverseJoinColumns = @JoinColumn(name = "user_id")
     )
     private List<User> users;
+
+    @OneToMany(mappedBy = "quiz", cascade = CascadeType.REMOVE, orphanRemoval = true)
+    private List<QuizResult> quizResults;
 }

@@ -25,7 +25,7 @@ public class User implements UserDetails {
     private String email;
 
     @Column(nullable = false)
-    private String password;  // Add this field to store hashed passwords
+    private String password;
 
     @Enumerated(EnumType.STRING)
     private Role role;
